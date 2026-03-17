@@ -1,5 +1,8 @@
-// Open a new tab or activate the first tab when clicked on the extension icon
-chrome.browserAction.onClicked.addListener(function(tab) {
+// Email data received from the inbox agent content script
+var cachedEmails = [];
+
+// Open a new tab or activate the first ProtonMail tab
+function openProtonMail() {
     chrome.tabs.query(
         {url: 'https://mail.protonmail.com/*'},
         function(tab_list) {
@@ -10,15 +13,16 @@ chrome.browserAction.onClicked.addListener(function(tab) {
             }
         }
     );
-});
+}
 
 
-// Listen for messages from the Content Script
+// Listen for messages from the Content Scripts and Popup
 chrome.runtime.onMessage.addListener(
     function(request, sender, sendResponse) {
         if (request.action && request.action == 'count') {
             // Change the extension icon and badge
             setIcon(request.color, request.count, request.tooltip);
+
         } else if (request.action && request.action == 'notif') {
             // Show notification if supported
             if (Notification && localStorage.getItem('notif_desktop') == 'true') {
@@ -41,6 +45,39 @@ chrome.runtime.onMessage.addListener(
                         console.log('Sound error!')
                     }
             }
+
+        } else if (request.action && request.action == 'emailData') {
+            // Store email data sent by the inbox agent content script
+            cachedEmails = request.emails || [];
+
+        } else if (request.action && request.action == 'getEmailData') {
+            // Popup requesting the latest stored email data
+            sendResponse({emails: cachedEmails});
+            return true;
+
+        } else if (request.action && request.action == 'openProtonMail') {
+            // Popup requesting to open / switch to ProtonMail
+            openProtonMail();
+
+        } else if (request.action && request.action == 'markAllRead') {
+            // Forward the mark-all-read action to the ProtonMail content script
+            chrome.tabs.query(
+                {url: 'https://mail.protonmail.com/*'},
+                function(tab_list) {
+                    if (tab_list.length > 0) {
+                        chrome.tabs.sendMessage(
+                            tab_list[0].id,
+                            {action: 'markAllRead'},
+                            function(response) {
+                                sendResponse(response || {success: false});
+                            }
+                        );
+                    } else {
+                        sendResponse({success: false, message: 'No ProtonMail tab open.'});
+                    }
+                }
+            );
+            return true;
         }
     }
 );
